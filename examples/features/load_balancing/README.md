@@ -6,14 +6,34 @@ Note: to show the effect of load balancers, an example resolver is installed in
 this example to get the backend addresses. It's suggested to read the name
 resolver example before this example.
 
-## Try it
+## Try it (This has been modified to include TLS)
+
+Modify /etc/hosts to include:
+
+```
+127.0.0.1       member1.etcd.local
+127.0.0.1       member2.etcd.local
+127.0.0.1       member3.etcd.local
+```
+
+Start two servers:
 
 ```
 go run server/main.go
 ```
 
+Start the client:
+
 ```
 go run client/main.go
+```
+
+The client fails with an error like:
+
+```
+--- calling helloworld.Greeter/SayHello with pick_first ---
+2019/09/24 18:24:57 could not greet: rpc error: code = Unavailable desc = all SubConns are in TransientFailure, latest connection error: connection error: desc = "transport: authentication handshake failed: x509: certificate is valid for member2.etcd.local, not lb.example.grpc.io"
+exit status 1
 ```
 
 ## Explanation

@@ -28,12 +28,15 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	ecpb "google.golang.org/grpc/examples/features/proto/echo"
 	"google.golang.org/grpc/status"
 )
 
 var (
-	addrs = []string{":50051", ":50052"}
+	addrs            = []string{"localhost:50051", "localhost:50052"}
+	certfileTemplate = "./server-dnsname%d.crt"
+	keyfileTemplate  = "./server-dnsname%d.key.insecure"
 )
 
 type ecServer struct {
@@ -53,12 +56,18 @@ func (s *ecServer) BidirectionalStreamingEcho(ecpb.Echo_BidirectionalStreamingEc
 	return status.Errorf(codes.Unimplemented, "not implemented")
 }
 
-func startServer(addr string) {
+func startServer(addr string, certfile, keyfile string) {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	s := grpc.NewServer()
+
+	creds, err := credentials.NewServerTLSFromFile(certfile, keyfile)
+	if err != nil {
+		log.Fatalf("failed to create credentials: %v", err)
+	}
+
+	s := grpc.NewServer(grpc.Creds(creds))
 	ecpb.RegisterEchoServer(s, &ecServer{addr: addr})
 	log.Printf("serving on %s\n", addr)
 	if err := s.Serve(lis); err != nil {
@@ -68,11 +77,14 @@ func startServer(addr string) {
 
 func main() {
 	var wg sync.WaitGroup
-	for _, addr := range addrs {
+	for i, addr := range addrs {
+		certfile := fmt.Sprintf(certfileTemplate, i+1)
+		keyfile := fmt.Sprintf(keyfileTemplate, i+1)
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
-			startServer(addr)
+			fmt.Printf("certfile: %s, keyfile: %s\n", certfile, keyfile)
+			startServer(addr, certfile, keyfile)
 		}(addr)
 	}
 	wg.Wait()

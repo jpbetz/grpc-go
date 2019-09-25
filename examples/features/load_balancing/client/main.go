@@ -21,11 +21,16 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	ecpb "google.golang.org/grpc/examples/features/proto/echo"
 	"google.golang.org/grpc/resolver"
 )
@@ -33,9 +38,10 @@ import (
 const (
 	exampleScheme      = "example"
 	exampleServiceName = "lb.example.grpc.io"
+	cafile             = "./ca.crt"
 )
 
-var addrs = []string{"localhost:50051", "localhost:50052"}
+var addrs = []string{"member1.etcd.local:50051", "member2.etcd.local:50052"}
 
 func callUnaryEcho(c ecpb.EchoClient, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -55,10 +61,23 @@ func makeRPCs(cc *grpc.ClientConn, n int) {
 }
 
 func main() {
+
+	certPool := x509.NewCertPool()
+	ca, err := ioutil.ReadFile(cafile)
+	if err != nil {
+		panic(fmt.Sprintf("could not read ca certificate: %s", err))
+	}
+	if ok := certPool.AppendCertsFromPEM(ca); !ok {
+		panic(errors.New("failed to append ca certs"))
+	}
+	creds := credentials.NewTLS(&tls.Config{
+		RootCAs: certPool,
+	})
+
 	pickfirstConn, err := grpc.Dial(
 		fmt.Sprintf("%s:///%s", exampleScheme, exampleServiceName),
 		// grpc.WithBalancerName("pick_first"), // "pick_first" is the default, so this DialOption is not necessary.
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
@@ -74,7 +93,7 @@ func main() {
 	roundrobinConn, err := grpc.Dial(
 		fmt.Sprintf("%s:///%s", exampleScheme, exampleServiceName),
 		grpc.WithBalancerName("round_robin"), // This sets the initial balancing policy.
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
